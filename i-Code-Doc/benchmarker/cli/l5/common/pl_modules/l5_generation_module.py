@@ -295,7 +295,7 @@ class L5GenerationModule(BaseLightningModule):
 
         group = parser.add_argument_group("mlflow")
         group.add_argument("--mlflow_experiment", type=str, default="/trash", help="MLFlow experiment name")
-        group.add_argument("--mlflow_uri", type=str, default="http://10.2.1.13:23889/", help="tracking uri")
+        group.add_argument("--mlflow_uri", type=str, default="http://mlflow:5000", help="tracking uri")
         group.add_argument("--mlflow_tags", default=None, type=json.loads)
 
         parser.add_argument("--word_dropout", type=float, default=0.0, required=False)

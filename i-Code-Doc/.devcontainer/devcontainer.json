@@ -2,14 +2,9 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/miniconda
 {
 	"name": "Miniconda (Python 3)",
-	"build": { 
-		"context": "..",
-		"dockerfile": "Dockerfile"
-	},
-	"runArgs": [ "--gpus", "all",
-		"--shm-size", "120g",
-		"--ipc=host"
-	],
+	"dockerComposeFile": "./docker-compose.yml",
+	"service": "udop",
+	"workspaceFolder": "/workspaces/udop/i-Code-Doc",
 
 	"features": {
 		// "ghcr.io/devcontainers/features/desktop-lite:1": {},
