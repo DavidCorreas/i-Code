@@ -3,6 +3,7 @@ checkpoints/
 memmaps/
 baselines/
 results*/
+i-Code-Doc/benchmarker/model/
 
 
 # Byte-compiled / optimized / DLL files
