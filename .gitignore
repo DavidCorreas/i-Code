@@ -4,6 +4,7 @@ memmaps/
 baselines/
 results*/
 i-Code-Doc/benchmarker/model/
+i-Code-Doc/model/
 
 
 # Byte-compiled / optimized / DLL files

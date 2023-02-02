@@ -12,8 +12,8 @@ class UdopConfig(T5Config):
                  max_2d_position_embeddings=1024,
                  max_bbox_length=1001, 
                  mae_version = 'mae_vit_large_patch16',
-                 mae_checkpoint = 'mae-models/mae_pretrain_vit_large_full.pth',
-                 data_dir = '/workspaces/i-Code/i-Code-Doc/checkpoints',  # It is concatenated to mae_checkpoint
+                 mae_checkpoint = 'mae_pretrain_vit_large_full.pth',
+                 mae_checkpoint_uri = '/workspaces/udop/i-Code-Doc/model',
                  image_size: int = 224,
                  relative_bias_args: Optional[Sequence[Dict[str, Any]]] = [{"type":"1d"},{"type":"horizontal"},{"type":"vertical"}],
                  **kwargs):
@@ -23,7 +23,7 @@ class UdopConfig(T5Config):
         self.max_bbox_length = max_bbox_length
         self.mae_version = mae_version
         self.mae_checkpoint = mae_checkpoint
-        self.data_dir = data_dir
+        self.data_dir = kwargs['_name_or_path'] if '_name_or_path' in kwargs else mae_checkpoint_uri
 
         self.relative_bias_args = [] if relative_bias_args is None else relative_bias_args
         self.image_size = image_size
