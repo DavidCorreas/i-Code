@@ -2,6 +2,10 @@ import os
 import re
 import logging
 
+import requests
+from io import BytesIO
+from PIL.TiffImagePlugin import TiffImageFile
+
 import numpy as np
 import torch
 
@@ -72,7 +76,7 @@ def get_last_checkpoint(folder):
     return os.path.join(
         folder,
         max(checkpoints,
-            key=lambda x: int(_re_checkpoint.search(x).groups()[0])))
+            key=lambda x: int(_re_checkpoint.search(x).groups()[0])))  # type: ignore
 
 
 def clamp(num, min_value, max_value):
@@ -142,3 +146,14 @@ def normalize_bbox(bbox, size, scale=1000):
         int(clamp((scale * bbox[2] / size[0]), 0, scale)),
         int(clamp((scale * bbox[3] / size[1]), 0, scale))
     ]
+
+def request_ocr(url: str, image: TiffImageFile, lang='en', format='TIFF'):
+    # Transform image to send in request
+    byte_io = BytesIO()
+    image.save(byte_io, format=format)
+    byte_io.seek(0)
+    
+    response = requests.post(url, files={"image": byte_io}, data={"lang": "en"})
+    assert response.status_code == 200, "OCR request failed"
+    assert hasattr(response.json(), "result"), "OCR request failed"
+    return response.json()["result"]
