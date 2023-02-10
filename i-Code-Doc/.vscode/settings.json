@@ -1,0 +1,7 @@
+{
+    "python.analysis.typeCheckingMode": "basic",
+    // Disable  in pylint
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportPrivateImportUsage": "none"
+    }
+}
