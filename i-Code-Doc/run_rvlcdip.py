@@ -8,7 +8,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
-from datasets import ClassLabel, load_dataset, load_metric
+from datasets import DatasetDict, ClassLabel, load_from_disk, load_metric
+import evaluate
+import nltk  # type: ignore
 
 import transformers
 from transformers import (
@@ -18,7 +20,8 @@ from transformers import (
     HfArgumentParser,
     PreTrainedTokenizerFast,
     TrainingArguments,
-    Trainer, 
+    Trainer,
+    EvalPrediction,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
@@ -133,11 +136,12 @@ class ModelArguments:
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
     """
     model_name_or_path: str = field(
-        default=None, 
+        # default=None, 
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     model_type: str = field(
-        default=None, metadata={'help': 'Model type selected in the list.'})
+        # default=None, 
+        metadata={'help': 'Model type selected in the list.'})
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )
@@ -253,6 +257,9 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    # Check if model_args.model_name_or_path is a path or url to a directory containing tokenizer files
+    if os.path.isdir(model_args.model_name_or_path):
+        config.mae_checkpoint = os.path.join(model_args.model_name_or_path, config.mae_checkpoint)
     model = model_type.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -263,11 +270,17 @@ def main():
     )
 
    # Get datasets
-    train_dataset = (RvlCdipDataset(data_args=data_args, tokenizer=tokenizer, mode='train')
-                     if training_args.do_train else None)
-    # TODO: for now use use test dataset for all evaluation -- will use both later                     
-    eval_dataset = (RvlCdipDataset(data_args=data_args, tokenizer=tokenizer, mode='test')
-                     if (training_args.do_eval or training_args.do_predict) else None)                     
+    dataset = load_from_disk("/workspaces/udop/i-Code-Doc/data/hf_rvl_cdip")
+    assert isinstance(dataset, DatasetDict), "load_dataset should return a dict"
+    train_dataset = dataset['train']
+    if training_args.do_train:
+        assert train_dataset is not None, "Training requires a train dataset"
+    eval_dataset = dataset['validation']
+    if training_args.do_eval:
+        assert eval_dataset is not None, "Evaluation requires an evaluation dataset"
+    test_dataset = dataset['test']
+    if training_args.do_predict:
+        assert test_dataset is not None, "Prediction requires a test dataset"                
 
     # Data collator
     padding = "max_length" if data_args.pad_to_max_length else False
@@ -277,22 +290,39 @@ def main():
         max_length=data_args.max_seq_length,
         max_length_decoder=data_args.max_seq_length_decoder,
     )
-    metric = load_metric("accuracy")
 
-    def compute_metrics(eval_pred):
+    # metric = evaluate.load("accuracy")
+    # Setup evaluation
+    nltk.download("punkt", quiet=True)
+    metric = evaluate.load("rouge")
+    assert metric is not None, "Could not load metric"
+
+    def compute_metrics(eval_pred: EvalPrediction):
         logits, labels = eval_pred
         predictions = np.argmax(logits, axis=-1)
-        return metric.compute(predictions=predictions, references=labels)
+
+        # decode preds and labels
+        assert tokenizer.pad_token_id is not None, "Please make sure that `tokenizer.pad_token_id` is defined."
+        labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+        decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
+        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+
+        # rougeLSum expects newline after each sentence
+        decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
+        decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
+
+        result = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+        return result
 
     # Initialize our Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=eval_dataset if training_args.do_eval else None,
+        train_dataset=train_dataset if training_args.do_train else None,  # type: ignore[arg-type]
+        eval_dataset=eval_dataset if training_args.do_eval else None,  # type: ignore[arg-type]
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics,
+        compute_metrics=compute_metrics,  # type: ignore[arg-type]
     )
 
     # Training
@@ -314,7 +344,6 @@ def main():
     # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-
         metrics = trainer.evaluate()
 
         max_val_samples = data_args.max_val_samples if data_args.max_val_samples is not None else len(eval_dataset)
@@ -328,13 +357,19 @@ def main():
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
-        predictions, labels, metrics = trainer.predict(eval_dataset)
-        predictions = np.argmax(predictions, axis=1)
+        predictions, labels, metrics = trainer.predict(test_dataset)  # type: ignore[arg-type]
+        predictions = np.argmax(predictions, axis=-1)
         
         trainer.log_metrics("test", metrics)
         trainer.save_metrics("test", metrics)
         
-        true_predictions = [label_list[p] for (p, l) in zip(predictions, labels) ]
+        # decode preds and labels
+        assert tokenizer.pad_token_id is not None, "Please make sure that `tokenizer.pad_token_id` is defined."
+        assert labels is not None, "Please make sure that `labels` is defined."
+        labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+        decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
+        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+        true_predictions = [f"Pred: {p}, Label: {l}" for (p, l) in zip(decoded_preds, decoded_labels)]
         # Save predictions
         output_test_predictions_file = os.path.join(training_args.output_dir, "test_predictions.txt")
         if trainer.is_world_process_zero():

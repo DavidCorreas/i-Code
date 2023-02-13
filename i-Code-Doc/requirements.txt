@@ -1,5 +1,5 @@
 numpy==1.23.1
-transformers==4.20.1
+transformers
 torch>=1.10.0
 timm==0.4.12
 pytorch_lightning==1.6.5
@@ -11,3 +11,5 @@ jsonlines
 catalyst
 product_key_memory
 datasets
+evaluate
+nltk

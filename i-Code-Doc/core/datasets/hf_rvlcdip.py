@@ -160,12 +160,11 @@ class HfRvlCdipDatasetBuilder:
         self.num_proc = num_proc
         self.label_list = get_rvlcdip_labels()
         self.label_map = dict(zip(list(range(len(self.label_list))), self.label_list))
-        self.max_samples = data_args.max_samples if data_args.max_samples > 0 else len(self.dataset['train'])
         
         # Load dataset
-        dataset: datasets.DatasetDict = load_dataset("rvl_cdip", cache_dir=cache_dir) # type: ignore
-        if self.max_samples > 0:
-            self.dataset: datasets.DatasetDict = datasets.DatasetDict({key: dataset[key].select(range(self.max_samples)) for key in dataset.keys()})
+        self.dataset: datasets.DatasetDict = load_dataset("rvl_cdip", cache_dir=cache_dir) # type: ignore
+        if data_args.max_samples > 0:
+            self.dataset: datasets.DatasetDict = datasets.DatasetDict({key: self.dataset[key].select(range(data_args.max_samples)) for key in self.dataset.keys()})
         
         assert type(self.dataset) is datasets.dataset_dict.DatasetDict, f"Dataset is not of type Dataset, but {type(self.dataset)}"
         
@@ -198,7 +197,7 @@ class HfRvlCdipDatasetBuilder:
         print("Filtering out None images and labels...")
         print(f'Number of examples before: {len(dataset["train"])}')
         filter_nones = lambda example: all(example[key] is not None for key in ['image', 'label', 'text_list', 'bbox_list', 'page_size'])
-        dataset = dataset.filter(filter_nones, num_proc=self.num_proc)
+        dataset = dataset.filter(filter_nones)
         print(f'Number of examples after: {len(dataset["train"])}')
         # Example: {'image': TiffImageFile, 'label': int}
         print(dataset['train'][0].keys())
@@ -263,7 +262,7 @@ class HfRvlCdipDatasetBuilder:
                 "bbox_list": bbox_list,
                 "seq_labels": seq_labels['input_ids'],
                 "attention_mask": attention_mask,
-                "decoder_attention_mask": seq_labels['input_ids'],
+                "decoder_attention_mask": seq_labels['attention_mask'],
             }
         dataset = dataset.map(convert_seq_to_seq, num_proc=self.num_proc)
         # Example: {'image': TiffImageFile, 'label': int,
@@ -296,7 +295,7 @@ class HfRvlCdipDatasetBuilder:
                 "char_ids": example['char_ids'],
                 "char_seg_data": example['char_seg_data']
             }
-        dataset = dataset.map(shape_data, num_proc=self.num_proc)
+        dataset = dataset.map(shape_data, num_proc=self.num_proc, remove_columns=dataset["train"].column_names)
         dataset.set_format(type='torch')
         print(dataset['train'][0].keys())
 
@@ -322,7 +321,7 @@ if __name__ == '__main__':
     )
 
     DataArgs = namedtuple('DataArgs', ['max_samples', 'max_seq_length', 'image_size'])
-    data_args = DataArgs(max_samples=100, max_seq_length=512, image_size=224)
+    data_args = DataArgs(max_samples=-1, max_seq_length=512, image_size=224)
 
-    new_dataset = HfRvlCdipDatasetBuilder(data_args, tokenizer, num_proc=12).build_dataset()
+    new_dataset = HfRvlCdipDatasetBuilder(data_args, tokenizer, num_proc=20).build_dataset()
     new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/hf_rvl_cdip")

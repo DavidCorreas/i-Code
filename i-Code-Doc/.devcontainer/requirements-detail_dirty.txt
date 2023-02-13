@@ -1,0 +1,123 @@
+absl-py==1.4.0
+accelerate==0.16.0
+aiohttp==3.8.3
+aiosignal==1.3.1
+asttokens @ file:///opt/conda/conda-bld/asttokens_1646925590279/work
+async-timeout==4.0.2
+attrs==22.2.0
+backcall @ file:///home/ktietz/src/ci/backcall_1611930011877/work
+brotlipy==0.7.0
+cachetools==5.3.0
+catalyst==22.4
+certifi @ file:///croot/certifi_1671487769961/work/certifi
+cffi @ file:///croot/cffi_1670423208954/work
+charset-normalizer @ file:///tmp/build/80754af9/charset-normalizer_1630003229654/work
+click==8.1.3
+comm @ file:///croot/comm_1671231121260/work
+conda==23.1.0
+conda-content-trust @ file:///tmp/abs_5952f1c8-355c-4855-ad2e-538535021ba5h26t22e5/croots/recipe/conda-content-trust_1658126371814/work
+conda-package-handling @ file:///croot/conda-package-handling_1672865015732/work
+conda_package_streaming @ file:///croot/conda-package-streaming_1670508151586/work
+cryptography @ file:///croot/cryptography_1673298753778/work
+datasets==2.9.0
+debugpy @ file:///tmp/build/80754af9/debugpy_1637091796427/work
+decorator @ file:///opt/conda/conda-bld/decorator_1643638310831/work
+dill==0.3.6
+entrypoints @ file:///tmp/build/80754af9/entrypoints_1649926445639/work
+evaluate==0.4.0
+executing @ file:///opt/conda/conda-bld/executing_1646925071911/work
+filelock==3.9.0
+frozenlist==1.3.3
+fsspec==2023.1.0
+google-auth==2.16.0
+google-auth-oauthlib==0.4.6
+grpcio==1.51.1
+huggingface-hub==0.12.0
+hydra-slayer==0.4.0
+idna @ file:///croot/idna_1666125576474/work
+importlib-metadata==6.0.0
+ipykernel @ file:///croot/ipykernel_1671488378391/work
+ipython @ file:///croot/ipython_1674681422581/work
+jedi @ file:///tmp/build/80754af9/jedi_1644315233700/work
+joblib==1.2.0
+jsonlines==3.1.0
+jupyter_client @ file:///croot/jupyter_client_1671703053786/work
+jupyter_core @ file:///croot/jupyter_core_1672332224593/work
+Markdown==3.4.1
+MarkupSafe==2.1.2
+matplotlib-inline @ file:///opt/conda/conda-bld/matplotlib-inline_1662014470464/work
+multidict==6.0.4
+multiprocess==0.70.14
+nest-asyncio @ file:///croot/nest-asyncio_1672387112409/work
+nltk==3.8.1
+numpy==1.23.1
+nvidia-cublas-cu11==11.10.3.66
+nvidia-cuda-nvrtc-cu11==11.7.99
+nvidia-cuda-runtime-cu11==11.7.99
+nvidia-cudnn-cu11==8.5.0.96
+oauthlib==3.2.2
+packaging==23.0
+pandas==1.5.3
+parso @ file:///opt/conda/conda-bld/parso_1641458642106/work
+pdf2image==1.16.0
+pexpect @ file:///tmp/build/80754af9/pexpect_1605563209008/work
+pickleshare @ file:///tmp/build/80754af9/pickleshare_1606932040724/work
+Pillow==9.4.0
+platformdirs @ file:///opt/conda/conda-bld/platformdirs_1662711380096/work
+pluggy @ file:///tmp/build/80754af9/pluggy_1648042571233/work
+product-key-memory==0.1.10
+prompt-toolkit @ file:///croot/prompt-toolkit_1672387306916/work
+protobuf==3.20.1
+psutil==5.9.4
+ptyprocess @ file:///tmp/build/80754af9/ptyprocess_1609355006118/work/dist/ptyprocess-0.7.0-py2.py3-none-any.whl
+pure-eval @ file:///opt/conda/conda-bld/pure_eval_1646925070566/work
+pyarrow==11.0.0
+pyasn1==0.4.8
+pyasn1-modules==0.2.8
+pycosat @ file:///croot/pycosat_1666805502580/work
+pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
+pyDeprecate==0.3.2
+Pygments @ file:///opt/conda/conda-bld/pygments_1644249106324/work
+pyOpenSSL @ file:///opt/conda/conda-bld/pyopenssl_1643788558760/work
+PySocks @ file:///tmp/build/80754af9/pysocks_1605305779399/work
+python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
+pytorch-lightning==1.6.5
+pytz==2022.7.1
+PyYAML==6.0
+pyzmq @ file:///opt/conda/conda-bld/pyzmq_1657724186960/work
+regex==2022.10.31
+requests @ file:///opt/conda/conda-bld/requests_1657734628632/work
+requests-oauthlib==1.3.1
+responses==0.18.0
+rouge-score==0.1.2
+rsa==4.9
+ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
+ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
+scikit-learn==1.2.1
+scipy==1.10.0
+sentencepiece==0.1.97
+six @ file:///tmp/build/80754af9/six_1644875935023/work
+stack-data @ file:///opt/conda/conda-bld/stack_data_1646927590127/work
+tensorboard==2.12.0
+tensorboard-data-server==0.7.0
+tensorboard-plugin-wit==1.8.1
+tensorboardX==2.5.1
+threadpoolctl==3.1.0
+timm==0.4.12
+tokenizers==0.13.2
+toolz @ file:///croot/toolz_1667464077321/work
+torch==1.13.1
+torchmetrics==0.11.1
+torchvision==0.14.1
+tornado @ file:///opt/conda/conda-bld/tornado_1662061693373/work
+tqdm @ file:///opt/conda/conda-bld/tqdm_1664392687731/work
+traitlets @ file:///croot/traitlets_1671143879854/work
+transformers==4.26.1
+typing_extensions==4.4.0
+urllib3 @ file:///croot/urllib3_1673575502006/work
+wcwidth @ file:///Users/ktietz/demo/mc3/conda-bld/wcwidth_1629357192024/work
+Werkzeug==2.2.2
+xxhash==3.2.0
+yarl==1.8.2
+zipp==3.13.0
+zstandard @ file:///opt/conda/conda-bld/zstandard_1663827383994/work
