@@ -14,6 +14,8 @@ hf_rvl_cdip/
 __pycache__/
 *.py[cod]
 *$py.class
+.hf_cache/
+benchmarker/model
 
 # C extensions
 *.so
