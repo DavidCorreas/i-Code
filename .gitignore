@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.hf_cache/
+benchmarker/model
 
 # C extensions
 *.so
@@ -127,3 +129,24 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+i-Code-Doc/benchmarker/model/DocVQA-T5-large-2D-U/config.json
+i-Code-Doc/benchmarker/model/DocVQA-T5-large-2D-U/pytorch_model.bin
+i-Code-Doc/benchmarker/model/DocVQA-T5-large-2D-U/special_tokens_map.json
+i-Code-Doc/benchmarker/model/DocVQA-T5-large-2D-U/spiece.model
+i-Code-Doc/benchmarker/model/DocVQA-T5-large-2D-U/tokenizer_config.json
+i-Code-Doc/benchmarker/model/DocVQA-T5-large-2D-U/tokenizer.json
+
+data/
+finetune_rvlcdip/
+rvl-cdip
+rvlcdip/
+results/
+i-Code-Doc/model/UdopUnimodel-Large-224/pytorch_model.bin
+i-Code-Doc/model/UdopUnimodel-Large-224/see_bin_files.py
+i-Code-Doc/model/UdopUnimodel-Large-224/training_args.bin
+i-Code-Doc/model/hf/config.json
+i-Code-Doc/model/hf/mae_pretrain_vit_large_full.pth
+i-Code-Doc/model/hf/pytorch_model.bin
+i-Code-Doc/model/hf/special_tokens_map.json
+i-Code-Doc/model/hf/spiece.model
+i-Code-Doc/model/hf/tokenizer_config.json
