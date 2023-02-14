@@ -1,3 +1,6 @@
 [submodule "due-benchmark"]
 	path = due-benchmark
 	url = https://github.com/due-benchmark/baselines.git
+[submodule "i-Code-Doc/IA4RobotFramework"]
+	path = i-Code-Doc/IA4RobotFramework
+	url = git@github.com:DavidCorreas/IA4RobotFramework.git

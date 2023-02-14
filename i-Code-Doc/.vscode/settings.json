@@ -3,5 +3,9 @@
     // Disable  in pylint
     "python.analysis.diagnosticSeverityOverrides": {
         "reportPrivateImportUsage": "none"
-    }
+    },
+    "python.analysis.extraPaths": [
+        "/workspaces/BUIBert/robotframework/buibert",
+        "./IA4RobotFramework/RobotLibraries"
+    ]
 }
