@@ -2,9 +2,9 @@
 # coding=utf-8
 
 import logging
-import wandb
 import os
 import sys
+import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -12,6 +12,7 @@ import numpy as np
 from datasets import DatasetDict, ClassLabel, load_from_disk, load_metric
 import evaluate
 import nltk  # type: ignore
+import wandb
 
 import transformers
 from transformers import (
@@ -52,9 +53,6 @@ class DataTrainingArguments:
     task_name: Optional[str] = field(default="ner", metadata={"help": "The name of the task (ner, pos...)."})
     data_dir: Optional[str] = field(
         default=None, metadata={"help": "local dataset stored location"},
-    )
-    report_to: Optional[str] = field(
-        default="wandb", metadata={"help": "local dataset stored location"},
     )
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
@@ -172,12 +170,23 @@ class ModelArguments:
         metadata={"help": "Attention type: BigBird configuruation only. Choices: block_sparse (default) or original_full"},
     )
 
+@dataclass
+class CustomTrainingArguments(TrainingArguments):
+    report_to: str = field(
+        default="wandb",
+        metadata={"help": "The service to report results to. Choices: wandb, comet, mlflow, tensorboard"},
+    )
+    examples_per_metrics: int = field(
+        default=2,
+        metadata={"help": "The number of examples to compute metrics on."},
+    )
+
 
 def main():
     # See all possible arguments in layoutlmft/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, CustomTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -213,10 +222,14 @@ def main():
     )
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
-    # Setup wandb
-    os.environ["WANDB_PROJECT"]="udop"
-    os.environ["WANDB_LOG_MODEL"]="true"
-    os.environ["WANDB_WATCH"]="false"
+    # Set weights and biases if available
+    if training_args.report_to == "wandb":
+        # set the wandb project where this run will be logged
+        os.environ["WANDB_PROJECT"]="udop"
+        # save your trained model checkpoint to wandb
+        os.environ["WANDB_LOG_MODEL"]="true"
+        # turn off watch to log faster
+        os.environ["WANDB_WATCH"]="false"
 
     # Log on each process the small summary:
     logger.warning(
@@ -248,11 +261,9 @@ def main():
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    num_labels = RvlCdipDataset.NUM_LABELS
 
     config = config_type.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-        num_labels=num_labels,
         finetuning_task=data_args.task_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
@@ -289,7 +300,7 @@ def main():
         assert eval_dataset is not None, "Evaluation requires an evaluation dataset"
     test_dataset = dataset['test']
     if training_args.do_predict:
-        assert test_dataset is not None, "Prediction requires a test dataset"                
+        assert test_dataset is not None, "Prediction requires a test dataset"               
 
     # Data collator
     padding = "max_length" if data_args.pad_to_max_length else False
@@ -303,11 +314,16 @@ def main():
     # metric = evaluate.load("accuracy")
     # Setup evaluation
     nltk.download("punkt", quiet=True)
-    metric = evaluate.load("rouge")
-    assert metric is not None, "Could not load metric"
+    rouge_metric = evaluate.load("rouge")
+    mean_iou = evaluate.load("mean_iou")
+    assert rouge_metric is not None, "Could not load metric"
+    # Setup executor to add rows to the wandb table
+    if training_args.report_to == "wandb":
+        global table_rows
+        table_rows = []
 
-    def compute_metrics(eval_pred: EvalPrediction):
-        logits, labels = eval_pred
+    def compute_metrics(eval_pred_inputs: EvalPrediction):
+        logits, labels, inputs = eval_pred_inputs
         predictions = np.argmax(logits, axis=-1)
 
         # decode preds and labels
@@ -319,8 +335,51 @@ def main():
         # rougeLSum expects newline after each sentence
         decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
         decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
+        result = rouge_metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
 
-        result = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+        # iou metric
+        if isinstance(tokenizer, UdopTokenizer):
+            # Get bbox if 
+            pred_bbox = tokenizer.get_bbox_from_logits(predictions)
+            label_bbox = tokenizer.get_bbox_from_logits(labels)
+            remove_idx = np.where(label_bbox[:, 0] == -1)[0]
+            pred_bbox = np.delete(pred_bbox, remove_idx, axis=0)
+            label_bbox = np.delete(label_bbox, remove_idx, axis=0)
+            shape = (pred_bbox.shape[0], tokenizer._loc_extra_ids, tokenizer._loc_extra_ids)
+            pred_map = np.zeros(shape)
+            label_map = np.zeros(shape)
+            for i in range(label_bbox.shape[0]):
+                if pred_bbox[i, 0] == -1:
+                    continue
+                pred_map[i, pred_bbox[i, 1]:pred_bbox[i, 3], pred_bbox[i, 0]:pred_bbox[i, 2]] = 1
+                label_map[i, label_bbox[i, 1]:label_bbox[i, 3], label_bbox[i, 0]:label_bbox[i, 2]] = 1
+            iou_result = mean_iou.compute(predictions=pred_map, references=label_map, num_labels=1, ignore_index=-1)  # Takes long time
+            if iou_result:
+                # Remove metrics that are categories of classes. Not necessary in binary detection
+                iou_result = {k: v for k, v in iou_result.items() if not isinstance(v, np.ndarray)}
+                result = {**result, **iou_result} if result else iou_result
+
+        if training_args.report_to == "wandb" and training_args.examples_per_metrics > 0:
+        # Log example to wandb table.
+        # Rows "epoch", "Input", "Image prediction", "Label", "Prediction"
+            row = []
+            # Add epoch
+            row.append(training_args.num_train_epochs)
+            inputs = inputs[:training_args.examples_per_metrics]
+            predictions = predictions[:training_args.examples_per_metrics]
+            labels = labels[:training_args.examples_per_metrics]
+
+            # Input
+            inputs = np.where(inputs != -100, inputs, tokenizer.pad_token_id)
+            decoded_inputs = tokenizer.batch_decode(inputs, skip_special_tokens=False)
+            # Remove "Web action and object layout prediction." from the beginning of each input. Hardcoded for now
+            decoded_inputs = [
+                input.replace("Web action and object layout prediction.", '').replace(tokenizer.pad_token, "") 
+                for input in decoded_inputs
+            ]
+
+        
+        
         return result
 
     # Initialize our Trainer
@@ -362,7 +421,6 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     # Predict
-    label_list = get_rvlcdip_labels()
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
@@ -376,8 +434,12 @@ def main():
         assert tokenizer.pad_token_id is not None, "Please make sure that `tokenizer.pad_token_id` is defined."
         assert labels is not None, "Please make sure that `labels` is defined."
         labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
-        decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+        # Get eos_token id
+        decoded_preds = tokenizer.batch_decode(predictions)
+        decoded_preds = [pred.split(tokenizer.eos_token)[0] for pred in decoded_preds]
+        decoded_labels = tokenizer.batch_decode(labels)
+        decoded_labels = [label.split(tokenizer.eos_token)[0] for label in decoded_labels]
+
         true_predictions = [f"Pred: {p}, Label: {l}" for (p, l) in zip(decoded_preds, decoded_labels)]
         # Save predictions
         output_test_predictions_file = os.path.join(training_args.output_dir, "test_predictions.txt")
@@ -385,13 +447,6 @@ def main():
             with open(output_test_predictions_file, "w") as writer:
                 for prediction in true_predictions:
                     writer.write(prediction + "\n")
-
-    wandb.finish()
-        
-
-def _mp_fn(index):
-    # For xla_spawn (TPUs)
-    main()
 
 
 if __name__ == "__main__":

@@ -1,13 +1,18 @@
 import os
+import io
+import base64
 import datasets
 import requests
 import torchvision.transforms as T
+import PIL.Image
+import PIL.ImageDraw
+import PIL.ImageFont
 import torch
 from collections import namedtuple
 from torchvision.transforms import functional as F
 from typing import Optional
 from datasets import load_dataset  # type: ignore
-from PIL.TiffImagePlugin import TiffImageFile
+from PIL.Image import Image
 from io import BytesIO
 import sys
 sys.path.append('/workspaces/udop/i-Code-Doc')
@@ -50,7 +55,7 @@ def normalText(t):
     t = str(t)
     return t.strip()
 
-def request_ocr(url: str, image: TiffImageFile, lang='en', format='TIFF'):
+def request_ocr(url: str, image: Image, lang='en', format='PNG'):
     # Transform image to send in request
     byte_io = BytesIO()
     image.save(byte_io, format=format)
@@ -59,10 +64,10 @@ def request_ocr(url: str, image: TiffImageFile, lang='en', format='TIFF'):
     response = requests.post(url, files={"image": byte_io}, data={"lang": "en"})
     return response.json()["result"]
 
-def process_ocr(url, image: TiffImageFile, tokenizer, lang='en') -> Optional[tuple]:
+def process_ocr(url, image: Image, tokenizer, lang='en') -> Optional[tuple]:
     """
     Process TiffImageFile with OCR, tokenize the text and for every token create a bounding box.
-    :param image: TiffImageFile. Image to process.
+    :param image: Image. Image to process.
     :param tokenizer: Tokenizer. Tokenizer to use.
     :param image_size: int. Size of the image.
     :return: tuple. list_tokens, list_bboxes, image, page_size
@@ -127,47 +132,69 @@ def img_trans_torchvision(image, image_size=224):
     image = trans(image)  # copy to make it writeable
     return image
 
-def get_rvlcdip_labels():
-    return [
-        "letter",
-        "form",
-        "email",
-        "handwritten",
-        "advertisement",
-        "scientific report",
-        "scientific publication",
-        "specification",
-        "file folder",
-        "news article",
-        "budget",
-        "invoice",
-        "presentation",
-        "questionnaire",
-        "resume",
-        "memo"
-    ]
 
-class HfRvlCdipDatasetBuilder:
+class RFInstructionBuilder:
+    def __init__(self, tokenizer: UdopTokenizer, page_size: tuple):
+        self.tokenizer: UdopTokenizer = tokenizer
+        self.page_size = page_size
+
+    def action_to_string(self, action: dict) -> str:
+        """
+        Action is a dict with keys: name, args, type
+        Result: action_name string bbox.
+        Example: Input text "Hello" <loc_50><loc_100><loc_250><loc_300>
+        """
+        prompt = ""
+        s = f' "{action["args"]["string"]}" ' if 'string' in action['args'] and action['args']['string'] else ''
+        bbox = action['args']['bbox'] if 'bbox' in action['args'] and action['args']['bbox'] else ''
+        if bbox:
+            x, y, w, h = bbox['x'], bbox['y'], bbox['width'], bbox['height']
+            tokens_bbox = self.tokenizer.convert_bbox_to_token([x, y, x+w, y+h], self.page_size)
+            bbox = "".join([str(t) for t in tokens_bbox])
+        prompt += action['name'] + s + bbox
+        return prompt
+        
+    def build(self, instruction_history:list):
+        prompt = "Instruction: "
+        for instruction in instruction_history:
+            if instruction['type'] == 'task':
+                prompt += "task: " + instruction['name'] + " > "
+            elif instruction['type'] == 'action':
+                prompt += "action: " + self.action_to_string(instruction) + " > "
+        prompt = prompt[:-3]
+        return prompt
+
+
+class HfRobotframeworkDatasetBuilder:
 
     def __init__(self, data_args, tokenizer, num_proc=12):
         file_dir = "/workspaces/udop/i-Code-Doc/core/datasets"
         cache_dir = os.sep.join(file_dir.split(os.sep)[:-2]) + os.sep + '.hf_cache'
         
         self.ocr_url = "http://nginx:80/ocr"
-        self.tokenizer = tokenizer
+        self.tokenizer: UdopTokenizer = tokenizer
         self.max_seq_length = data_args.max_seq_length
         self.image_size = data_args.image_size
         self.num_proc = num_proc
-        self.label_list = get_rvlcdip_labels()
-        self.label_map = dict(zip(list(range(len(self.label_list))), self.label_list))
         
         # Load dataset
-        self.dataset: datasets.DatasetDict = load_dataset("rvl_cdip", cache_dir=cache_dir) # type: ignore
-        if data_args.max_samples > 0:
-            assert isinstance(self.dataset, datasets.DatasetDict), f"Dataset is not of type DatasetDict, but {type(self.dataset)}"
-            self.dataset: datasets.DatasetDict = datasets.DatasetDict({key: self.dataset[key].select(range(data_args.max_samples)) for key in self.dataset.keys()})
+        dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop"
+        dataset: datasets.DatasetDict = load_dataset("json", data_dir=dataset_dir, cache_dir=cache_dir) # type: ignore
+        assert isinstance(dataset, datasets.DatasetDict)
+
+        # Clean dataset before splitting
+        filter_not = lambda example: all([instruction['name'].lower() != 'not' for instruction in example['instruction_history']])
+        # Copy dataset
+        dataset = dataset.filter(filter_not)
         
-        assert type(self.dataset) is datasets.dataset_dict.DatasetDict, f"Dataset is not of type Dataset, but {type(self.dataset)}"
+        # Split dataset
+        train_dataset = dataset['train'].train_test_split(test_size=0.1, seed=42)
+        val_dataset = train_dataset['train'].train_test_split(test_size=0.1, seed=42)
+        self.dataset = datasets.DatasetDict({
+            'train': val_dataset['train'],
+            'validation': val_dataset['test'],
+            'test': train_dataset['test']
+        })
         
         # Print size of dataset
         print(f"Train size: {len(self.dataset['train'])}")
@@ -177,6 +204,13 @@ class HfRvlCdipDatasetBuilder:
     def build_dataset(self):
         print("Building dataset")
         dataset = self.dataset
+
+        print("Convert images...")
+        # Convert str
+        img_convert = lambda example: {
+            "image": PIL.Image.open(io.BytesIO(base64.b64decode(example['screenshot']))).convert('RGB')
+        }
+        dataset = dataset.map(img_convert, num_proc=self.num_proc, remove_columns=['screenshot'])
 
         print("Processing OCR...")
         def read_image(example):
@@ -195,15 +229,27 @@ class HfRvlCdipDatasetBuilder:
             }
         dataset = dataset.map(read_image, num_proc=self.num_proc)
 
+        # Show 3 examples
+        # data_to_print = dataset['train'].shuffle(seed=42).select(range(3))
+        # def print_ocr(example):
+        #     img = example['image']
+        #     # With pillow draw print in the image the text and the bbox
+        #     draw = PIL.ImageDraw.Draw(img)
+        #     for text, bbox in zip(example['text_list'], example['bbox_list']):
+        #         draw.rectangle(bbox, outline='red')
+        #         text = text.encode('utf-8').decode('utf-8')
+        #         font = PIL.ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size=12)
+
+        #         draw.text((bbox[0], bbox[1]), text, font=font, fill='red')
+        #     # Save image
+        #     img.save(f"example_{example['instruction_history'][0]['name']}.png")
+        # data_to_print.map(print_ocr)
+
         print("Filtering out None images and labels...")
         print(f'Number of examples before: {len(dataset["train"])}')
-        filter_nones = lambda example: all(example[key] is not None for key in ['image', 'label', 'text_list', 'bbox_list', 'page_size'])
+        filter_nones = lambda example: all(example[key] is not None for key in ['image', 'text_list', 'bbox_list', 'page_size'])
         dataset = dataset.filter(filter_nones)
         print(f'Number of examples after: {len(dataset["train"])}')
-        # Example: {'image': TiffImageFile, 'label': int}
-        print(dataset['train'][0].keys())
-        # Example: {'image': TiffImageFile, 'label': int, 
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height)}
         print(dataset['train'][0].keys())
         
         print("Processing images...")
@@ -211,8 +257,6 @@ class HfRvlCdipDatasetBuilder:
             "image": img_trans_torchvision(example['image'], self.image_size)
         }
         dataset = dataset.map(process_image, num_proc=self.num_proc)
-        # Example: {'image': TiffImageFile, 'label': int,
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height)}
         print(dataset['train'][0].keys())
 
         print("Normalizing bounding boxes...")
@@ -225,36 +269,48 @@ class HfRvlCdipDatasetBuilder:
             return {
                 "bbox_list": new_bboxes,
             }
-        dataset = dataset.map(normalize_bboxes, num_proc=self.num_proc)
-        # Example: {'image': TiffImageFile, 'label': int,
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height)}
+        dataset = dataset.map(normalize_bboxes)
         print(dataset['train'][0].keys())
         
         print("Adding visual bounding boxes...")
         add_visual_bboxes = lambda _: {"visual_seg_data": get_visual_bbox(self.image_size)}
-        dataset = dataset.map(add_visual_bboxes, num_proc=self.num_proc)
-        # Example: {'image': TiffImageFile, 'label': int,
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height),
-        #   'visual_seg_data': torch.Tensor}
+        dataset = dataset.map(add_visual_bboxes)
         print(dataset['train'][0].keys())
         
         print("Convert tokens to ids...")
         tokens_to_ids = lambda example: {
                 "token_list": self.tokenizer.convert_tokens_to_ids(example['text_list']),
             }
-        dataset = dataset.map(tokens_to_ids, num_proc=self.num_proc)
-        # Example: {'image': TiffImageFile, 'label': int,
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height),
-        #   'visual_seg_data': torch.Tensor, 'token_list': list}
+        dataset = dataset.map(tokens_to_ids)
         print(dataset['train'][0].keys())
         
+        print("Making prompt...")
+        def make_prompt(example):
+            prompt_text = "Web action and object layout prediction."
+            instruction = RFInstructionBuilder(
+                self.tokenizer, example['page_size']
+            ).build(example['instruction_history'])
+            label = RFInstructionBuilder(
+                self.tokenizer, example['page_size']
+            ).action_to_string(example['step'])
+            label = example['step']['type'] + ": " + label
+            return {
+                "prompt": prompt_text,
+                "instruction": instruction,
+                "label": label,
+            }
+        dataset = dataset.map(make_prompt)
+
         print("Convert to seq2seq...")
         def convert_seq_to_seq(example):
-            prompt_text = 'document classification.'
-            prompt_ids =  self.tokenizer.encode(prompt_text, add_special_tokens=False)
+            # Encoder
+            prompt = example['prompt'] + " " + example['instruction']
+            prompt_ids =  self.tokenizer.encode(prompt, add_special_tokens=False)
             input_ids = prompt_ids + example['token_list']  # To add prompt to input ids
+            input_ids = input_ids[:self.max_seq_length]  # To truncate
             bbox_list = [[0,0,0,0]] * len(prompt_ids) + example['bbox_list']  # To add prompt with empty bbox
-            seq_labels = self.tokenizer(self.label_map[example["label"]], add_special_tokens=True) # To add EOS token
+            # Decoder
+            seq_labels = self.tokenizer(example['label'], add_special_tokens=True) # To add EOS token
             
             attention_mask = [1] * len(input_ids)
             
@@ -266,22 +322,12 @@ class HfRvlCdipDatasetBuilder:
                 "decoder_attention_mask": seq_labels['attention_mask'],
             }
         dataset = dataset.map(convert_seq_to_seq, num_proc=self.num_proc)
-        # Example: {'image': TiffImageFile, 'label': int,
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height),
-        #   'visual_seg_data': torch.Tensor, 'token_list': list, 'prompt': int,
-        #   'seq_labels': list, 'input_ids': list, 'attention_mask': list, 
-        #   'decoder_attention_mask': list}
         print(dataset['train'][0].keys())
 
         add_char = lambda _: {"char_ids": [0]}
         dataset = dataset.map(add_char, num_proc=self.num_proc)
         add_char_seg_data = lambda _: {"char_seg_data": [[0,0,0,0]]}
         dataset = dataset.map(add_char_seg_data, num_proc=self.num_proc)
-        # Example: {'image': TiffImageFile, 'label': int,
-        #   'text_list': list, 'bbox_list': list, 'page_size': (width, height),
-        #   'visual_seg_data': torch.Tensor, 'token_list': list, 'prompt': int,
-        #   'seq_labels': list, 'input_ids': list, 'attention_mask': list, 
-        #   'decoder_attention_mask': list, 'char_ids': torch.Tensor, 'char_seg_data': torch.Tensor}
 
         print("Shaping data...")
         def shape_data(example):
@@ -322,7 +368,7 @@ if __name__ == '__main__':
     )
 
     DataArgs = namedtuple('DataArgs', ['max_samples', 'max_seq_length', 'image_size'])
-    data_args = DataArgs(max_samples=100, max_seq_length=512, image_size=224)
+    data_args = DataArgs(max_samples=-1, max_seq_length=512, image_size=224)
 
-    new_dataset = HfRvlCdipDatasetBuilder(data_args, tokenizer, num_proc=20).build_dataset()
-    new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/hf_rvl_cdip")
+    new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=20).build_dataset()
+    new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/robotframework")

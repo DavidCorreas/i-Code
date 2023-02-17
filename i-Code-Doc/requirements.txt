@@ -13,3 +13,5 @@ product_key_memory
 datasets
 evaluate
 nltk
+wandb
+flask

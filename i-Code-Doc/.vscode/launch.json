@@ -71,6 +71,7 @@
                 "CUDA_VISIBLE_DEVICES": "0"
             },
             "args": [
+                "--dataset_name", "/workspaces/udop/i-Code-Doc/data/hf_rvl_cdip",
                 "--data_dir", "./rvl-cdip",
                 "--max_seq_length", "1024",
                 "--image_size", "224",
@@ -93,6 +94,34 @@
                 "--warmup_ratio", "0.001",
                 "--weight_decay", "0.001"
             ]
+        },
+
+        {
+            "name": "Train RobotFramework",
+            "type": "python",
+            "request": "launch",
+            "program": "/workspaces/udop/i-Code-Doc/run_robotframework.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "/workspaces/udop/i-Code-Doc",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "args": ["/workspaces/udop/i-Code-Doc/run_robotframework_train.json"]
+        },
+
+        {
+            "name": "Debug RobotFramework",
+            "type": "python",
+            "request": "launch",
+            "program": "/workspaces/udop/i-Code-Doc/run_robotframework.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "/workspaces/udop/i-Code-Doc",
+                "CUDA_VISIBLE_DEVICES": "0"
+            },
+            "args": ["/workspaces/udop/i-Code-Doc/run_robotframework_debug.json"]
         }
     ]
 }

@@ -1,5 +1,6 @@
 from transformers import T5Tokenizer, T5TokenizerFast, PreTrainedTokenizer, PreTrainedTokenizerBase
 import re
+import numpy as np
 import sentencepiece as spm
 
 # The special tokens of T5Tokenizer is hard-coded with <extra_id_{}>
@@ -122,6 +123,55 @@ class UdopTokenizer(T5Tokenizer):
             else:
                 raise
         return token
+    
+    def get_bbox_from_logits(self, logits):
+        """
+        Exctact bbox of sentence given logits of shape (batch_size, seq_length) 
+        to bbox of shape (batch_size, 4).
+        Logits must be normalized with softmax and argmax.
+        If the seq doesn't contain bbox, return [-1, -1, -1, -1]
+        """
+        bbox = np.ones((logits.shape[0], 4), dtype=np.int32)
+        # Get rows of logits that contain bbox
+        loc_inx_start = self.vocab_size - self._loc_extra_ids - self._other_extra_ids
+        loc_inx_end = self.vocab_size - self._other_extra_ids
+        loc_inx = np.where(np.logical_and(logits >= loc_inx_start, logits < loc_inx_end))
+
+        # Get unique rows
+        rows_bbox = np.unique(loc_inx[0])
+
+        for i in range(logits.shape[0]):
+            if i in rows_bbox:
+                # Get index where loc_inx[0] == i
+                inx = np.where(loc_inx[0] == i)
+                # Get logits of bbox
+                logits_bbox = logits[i, loc_inx[1][inx]]
+                # Get bbox
+                bbox[i, :] = logits_bbox - loc_inx_end + 1
+
+        bbox = bbox * -1
+        return bbox
+        
+
+    def convert_bbox_to_token(self, bbox, page_size):
+        # Convert to tokens depending of localization tokens vocab size. 
+        # Example: normalized bbox: [0.1, 0.2, 0.5, 0.6], vocab size: 500 -> [<loc_50><loc_100><loc_250><loc_300>]
+        bbox = [bbox[0] / page_size[0], bbox[1] / page_size[1], bbox[2] / page_size[0], bbox[3] / page_size[1]]
+        
+        tokens = []
+        for b in bbox:
+            tokens.append(f'<loc_{int(b * (self._loc_extra_ids - 1))}>')
+        return tokens
+
+    def convert_token_to_bbox(self, tokens, page_size):
+        # Convert tokens to bbox depending of localization tokens vocab size. 
+        # Example: [<loc_50><loc_100><loc_250><loc_300>], vocab size: 500 -> [0.1, 0.2, 0.5, 0.6]
+        bbox = []
+        for t in tokens:
+            match = re.match(r"<loc_(\d+)>", t)
+            num = int(match.group(1))
+            bbox.append(num / (self._loc_extra_ids - 1))
+        return [bbox[0] * page_size[0], bbox[1] * page_size[1], bbox[2] * page_size[0], bbox[3] * page_size[1]]
 
 
 # Below are for Rust-based Fast Tokenizer
