@@ -21,10 +21,9 @@
     "weight_decay": 0.001,
     
     "report_to": "wandb",
-    "max_steps": 10,
+    "max_steps": 1,
     "save_steps": 200,
     "logging_steps": 1,
     "evaluation_strategy": "steps",
-    "eval_steps": 1,
-    "include_inputs_for_metrics": true
+    "eval_steps": 1
 }

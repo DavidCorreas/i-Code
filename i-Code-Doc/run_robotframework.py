@@ -4,12 +4,11 @@
 import logging
 import os
 import sys
-import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
-from datasets import DatasetDict, ClassLabel, load_from_disk, load_metric
+from datasets import DatasetDict, load_from_disk
 import evaluate
 import nltk  # type: ignore
 import wandb
@@ -21,7 +20,6 @@ from transformers import (
     AutoTokenizer,
     HfArgumentParser,
     PreTrainedTokenizerFast,
-    TrainingArguments,
     Trainer,
     EvalPrediction,
     set_seed,
@@ -29,9 +27,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
-from core.datasets import RvlCdipDataset, get_rvlcdip_labels
-from core.trainers import DataCollator
+from core.trainers import DataCollator, UdopWandbCallback
 from core.models import UdopDualForConditionalGeneration, UdopUnimodelForConditionalGeneration, UdopConfig, UdopTokenizer
+from config.hf_training_args import CustomTrainingArguments
 
 
 MODEL_CLASSES = {
@@ -129,7 +127,7 @@ class DataTrainingArguments:
             'The maximum total input sequence length after tokenization. Sequences longer '
             'than this will be truncated, sequences shorter will be padded.'
         },
-    )    
+    )  
 
 
 @dataclass
@@ -168,17 +166,6 @@ class ModelArguments:
     attention_type: str = field(
         default="original_full",
         metadata={"help": "Attention type: BigBird configuruation only. Choices: block_sparse (default) or original_full"},
-    )
-
-@dataclass
-class CustomTrainingArguments(TrainingArguments):
-    report_to: str = field(
-        default="wandb",
-        metadata={"help": "The service to report results to. Choices: wandb, comet, mlflow, tensorboard"},
-    )
-    examples_per_metrics: int = field(
-        default=2,
-        metadata={"help": "The number of examples to compute metrics on."},
     )
 
 
@@ -322,8 +309,8 @@ def main():
         global table_rows
         table_rows = []
 
-    def compute_metrics(eval_pred_inputs: EvalPrediction):
-        logits, labels, inputs = eval_pred_inputs
+    def compute_metrics(eval_pred: EvalPrediction):
+        logits, labels = eval_pred
         predictions = np.argmax(logits, axis=-1)
 
         # decode preds and labels
@@ -359,27 +346,6 @@ def main():
                 iou_result = {k: v for k, v in iou_result.items() if not isinstance(v, np.ndarray)}
                 result = {**result, **iou_result} if result else iou_result
 
-        if training_args.report_to == "wandb" and training_args.examples_per_metrics > 0:
-        # Log example to wandb table.
-        # Rows "epoch", "Input", "Image prediction", "Label", "Prediction"
-            row = []
-            # Add epoch
-            row.append(training_args.num_train_epochs)
-            inputs = inputs[:training_args.examples_per_metrics]
-            predictions = predictions[:training_args.examples_per_metrics]
-            labels = labels[:training_args.examples_per_metrics]
-
-            # Input
-            inputs = np.where(inputs != -100, inputs, tokenizer.pad_token_id)
-            decoded_inputs = tokenizer.batch_decode(inputs, skip_special_tokens=False)
-            # Remove "Web action and object layout prediction." from the beginning of each input. Hardcoded for now
-            decoded_inputs = [
-                input.replace("Web action and object layout prediction.", '').replace(tokenizer.pad_token, "") 
-                for input in decoded_inputs
-            ]
-
-        
-        
         return result
 
     # Initialize our Trainer
@@ -391,6 +357,7 @@ def main():
         tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics,  # type: ignore[arg-type]
+        callbacks=[UdopWandbCallback()] if "wandb" in training_args.report_to else None,
     )
 
     # Training

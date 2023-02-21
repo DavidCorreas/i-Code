@@ -142,7 +142,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .hf_cache/
-finetune_rvlcdip/
-finetune_robotframework/
 i-Code-Doc/data/
 i-Code-Doc/wandb/
+finetune_*/

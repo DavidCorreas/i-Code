@@ -163,15 +163,13 @@ class UdopTokenizer(T5Tokenizer):
             tokens.append(f'<loc_{int(b * (self._loc_extra_ids - 1))}>')
         return tokens
 
-    def convert_token_to_bbox(self, tokens, page_size):
+    def convert_sentence_to_bbox(self, sentence, page_size) -> tuple:
         # Convert tokens to bbox depending of localization tokens vocab size. 
-        # Example: [<loc_50><loc_100><loc_250><loc_300>], vocab size: 500 -> [0.1, 0.2, 0.5, 0.6]
-        bbox = []
-        for t in tokens:
-            match = re.match(r"<loc_(\d+)>", t)
-            num = int(match.group(1))
-            bbox.append(num / (self._loc_extra_ids - 1))
-        return [bbox[0] * page_size[0], bbox[1] * page_size[1], bbox[2] * page_size[0], bbox[3] * page_size[1]]
+        # Example: Click at <loc_50><loc_100><loc_250><loc_300>, vocab size: 500 -> [0.1, 0.2, 0.5, 0.6]
+        nums = re.findall(r'<loc_(\d+)>', sentence)
+        norm_nums = [int(n) / (self._loc_extra_ids - 1) for n in nums]
+        bbox = [int(n * page_size[i % 2]) for i, n in enumerate(norm_nums)]
+        return tuple(bbox)
 
 
 # Below are for Rust-based Fast Tokenizer
