@@ -133,7 +133,7 @@ def img_trans_torchvision(image, image_size=224):
     return image
 
 
-class RFInstructionBuilder:
+class RFToInstructionBuilder:
     def __init__(self, tokenizer: UdopTokenizer, page_size: tuple):
         self.tokenizer: UdopTokenizer = tokenizer
         self.page_size = page_size
@@ -175,10 +175,11 @@ class HfRobotframeworkDatasetBuilder:
         self.tokenizer: UdopTokenizer = tokenizer
         self.max_seq_length = data_args.max_seq_length
         self.image_size = data_args.image_size
+        dataset_dir = data_args.dataset_dir
         self.num_proc = num_proc
         
         # Load dataset
-        dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop"
+        
         dataset: datasets.DatasetDict = load_dataset("json", data_dir=dataset_dir, cache_dir=cache_dir) # type: ignore
         assert isinstance(dataset, datasets.DatasetDict)
 
@@ -286,11 +287,12 @@ class HfRobotframeworkDatasetBuilder:
         
         print("Making prompt...")
         def make_prompt(example):
+            # Instruction history is the input, step=PageAction is the label. Could be task or action.
             prompt_text = "Web action and object layout prediction."
-            instruction = RFInstructionBuilder(
+            instruction = RFToInstructionBuilder(
                 self.tokenizer, example['page_size']
             ).build(example['instruction_history'])
-            label = RFInstructionBuilder(
+            label = RFToInstructionBuilder(
                 self.tokenizer, example['page_size']
             ).action_to_string(example['step'])
             label = example['step']['type'] + ": " + label
@@ -367,8 +369,9 @@ if __name__ == '__main__':
         use_fast=True
     )
 
-    DataArgs = namedtuple('DataArgs', ['max_samples', 'max_seq_length', 'image_size'])
-    data_args = DataArgs(max_samples=-1, max_seq_length=512, image_size=224)
+    DataArgs = namedtuple('DataArgs', ['dataset_dir', 'max_samples', 'max_seq_length', 'image_size'])
+    dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop"
+    data_args = DataArgs(dataset_dir=dataset_dir, max_samples=-1, max_seq_length=512, image_size=224)
 
     new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=20).build_dataset()
     new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/robotframework")

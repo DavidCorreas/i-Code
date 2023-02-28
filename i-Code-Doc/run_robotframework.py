@@ -210,7 +210,7 @@ def main():
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
     # Set weights and biases if available
-    if training_args.report_to == "wandb":
+    if "wandb" in training_args.report_to:
         # set the wandb project where this run will be logged
         os.environ["WANDB_PROJECT"]="udop"
         # save your trained model checkpoint to wandb
