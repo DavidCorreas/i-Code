@@ -257,7 +257,7 @@ class UdopPipeline(Pipeline):
         if len(loc) > 0:
             bbox = self.tokenizer.convert_sentence_to_bbox(pred, self.page_size)  # type: ignore
             pred = re.sub(r'<loc_\d+>', '', pred)
-            pred += f" {bbox}"
+            pred += f" (x1={bbox[0]}, y1={bbox[1]}, x2={bbox[2]}, y2={bbox[3]})"
 
         return pred
     
@@ -286,11 +286,14 @@ if __name__ == "__main__":
     example = dataset["train"][0]
     # Run pipeline
     image = PIL.Image.open(io.BytesIO(base64.b64decode(example['screenshot']))).convert('RGB')
+    image.save("test.png")
     print(example['instruction_history'])
     instruction = RFToInstructionBuilder(
                 tokenizer, image.size
             ).build(example['instruction_history'])
     print(instruction)
+    with open("test.txt", "w") as f:
+        f.write(instruction)
     prediction = udop({"image":image, "instruction":instruction})
     print(f'Label: {example["step"]["name"]} {example["step"]["args"]["bbox"]}')
     print(f'Prediction {prediction}')
