@@ -8,6 +8,7 @@ i-Code-Doc/model/
 rvl-cdip/
 hf_rvl_cdip/
 
+borrar/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -139,3 +140,8 @@ dmypy.json
 .pyre/
 .hf_cache/
 finetune_rvlcdip/
+finetune_robotframework/
+hf_rvl_cdip/
+wandb/
+data/
+benchmarker/

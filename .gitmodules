@@ -4,3 +4,6 @@
 [submodule "i-Code-Doc/IA4RobotFramework"]
 	path = i-Code-Doc/IA4RobotFramework
 	url = git@github.com:DavidCorreas/IA4RobotFramework.git
+[submodule "i-Code-Doc/miniwob"]
+	path = i-Code-Doc/miniwob
+	url = https://github.com/Farama-Foundation/miniwob-plusplus.git

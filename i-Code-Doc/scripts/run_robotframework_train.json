@@ -1,6 +1,5 @@
 {
     "dataset_name": "/workspaces/udop/i-Code-Doc/data/robotframework",
-    "data_dir": "./rvl-cdip",
     "max_seq_length": 1024,
     "image_size": 224,
     "max_seq_length_decoder": 100,
@@ -21,9 +20,9 @@
     "weight_decay": 0.001,
     
     "report_to": "wandb",
-    "max_steps": 600,
-    "save_steps": 200,
+    "max_steps": 1500,
+    "save_steps": 500,
     "logging_steps": 5,
     "evaluation_strategy": "steps",
-    "eval_steps": 50
+    "eval_steps": 100
 }
