@@ -10,13 +10,14 @@ import PIL.ImageFont
 import torch
 from collections import namedtuple
 from torchvision.transforms import functional as F
-from typing import Optional
+from typing import Optional, Union
 from datasets import load_dataset  # type: ignore
 from PIL.Image import Image
 from io import BytesIO
 import sys
 sys.path.append('/workspaces/udop/i-Code-Doc')
-from core.models import UdopDualForConditionalGeneration, UdopUnimodelForConditionalGeneration, UdopConfig, UdopTokenizer
+from core.models import UdopTokenizer
+from src.qact.data_structure import UDOPExample, PromptStep
 
 
 def get_visual_bbox(image_size=224):
@@ -133,33 +134,33 @@ def img_trans_torchvision(image, image_size=224):
     return image
 
 
-class RFToInstructionBuilder:
+class UdopExampleToInstruction:
     def __init__(self, tokenizer: UdopTokenizer, page_size: tuple):
         self.tokenizer: UdopTokenizer = tokenizer
         self.page_size = page_size
 
-    def action_to_string(self, action: dict) -> str:
+    def action_to_string(self, action: PromptStep) -> str:
         """
         Action is a dict with keys: name, args, type
         Result: action_name string bbox.
         Example: Input text "Hello" <loc_50><loc_100><loc_250><loc_300>
         """
         prompt = ""
-        s = f' "{action["args"]["string"]}" ' if 'string' in action['args'] and action['args']['string'] else ''
-        bbox = action['args']['bbox'] if 'bbox' in action['args'] and action['args']['bbox'] else ''
-        if bbox:
+        s = f' "{action.args["string"]}" ' if 'string' in action.args and action.args['string'] else ''
+        bbox: Union[dict, str] = action.args['bbox'] if action.args.get('bbox', '') else ''
+        if isinstance(bbox, dict):
             x, y, w, h = bbox['x'], bbox['y'], bbox['width'], bbox['height']
             tokens_bbox = self.tokenizer.convert_bbox_to_token([x, y, x+w, y+h], self.page_size)
             bbox = "".join([str(t) for t in tokens_bbox])
-        prompt += action['name'] + s + bbox
+        prompt += action.name + s + bbox
         return prompt
         
-    def build(self, instruction_history:list):
+    def build(self, instruction_history:'list[PromptStep]'):
         prompt = "Instruction: "
         for instruction in instruction_history:
-            if instruction['type'] == 'task':
-                prompt += "task: " + instruction['name'] + " > "
-            elif instruction['type'] == 'action':
+            if instruction.type == 'task':
+                prompt += "task: " + instruction.name + " > "
+            elif instruction.type == 'action':
                 prompt += "action: " + self.action_to_string(instruction) + " > "
         prompt = prompt[:-3]
         return prompt
@@ -179,9 +180,12 @@ class HfRobotframeworkDatasetBuilder:
         self.num_proc = num_proc
         
         # Load dataset
-        
         dataset: datasets.DatasetDict = load_dataset("json", data_dir=dataset_dir, cache_dir=cache_dir) # type: ignore
+        # TODO: Remove this line
+        dataset: datasets.DatasetDict = datasets.DatasetDict({key: dataset[key].select(range(10)) for key in dataset.keys()})
         assert isinstance(dataset, datasets.DatasetDict)
+
+        
 
         # Clean dataset before splitting
         filter_not = lambda example: all([instruction['name'].lower() != 'not' for instruction in example['instruction_history']])
@@ -289,12 +293,14 @@ class HfRobotframeworkDatasetBuilder:
         def make_prompt(example):
             # Instruction history is the input, step=PageAction is the label. Could be task or action.
             prompt_text = "Web action and object layout prediction."
-            instruction = RFToInstructionBuilder(
+            list_steps = [PromptStep.from_dict(step) for step in example['instruction_history']]
+            instruction = UdopExampleToInstruction(
                 self.tokenizer, example['page_size']
-            ).build(example['instruction_history'])
-            label = RFToInstructionBuilder(
+            ).build(list_steps)
+            gt_step = PromptStep.from_dict(example['step'])
+            label = UdopExampleToInstruction(
                 self.tokenizer, example['page_size']
-            ).action_to_string(example['step'])
+            ).action_to_string(gt_step)
             label = example['step']['type'] + ": " + label
             return {
                 "prompt": prompt_text,
@@ -373,5 +379,5 @@ if __name__ == '__main__':
     dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop"
     data_args = DataArgs(dataset_dir=dataset_dir, max_samples=-1, max_seq_length=512, image_size=224)
 
-    new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=20).build_dataset()
+    new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=1).build_dataset()
     new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/robotframework")

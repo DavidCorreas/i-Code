@@ -270,7 +270,7 @@ if __name__ == "__main__":
     import base64
     import PIL.Image
     from datasets import load_dataset, DatasetDict
-    from core.datasets.hf_robotframework import RFToInstructionBuilder
+    from core.datasets.robotframework import UdopExampleToInstruction
     from core.models.udop_unimodel import UdopUnimodelForConditionalGeneration
     from core.models.tokenization import UdopTokenizer
 
@@ -288,7 +288,7 @@ if __name__ == "__main__":
     image = PIL.Image.open(io.BytesIO(base64.b64decode(example['screenshot']))).convert('RGB')
     image.save("test.png")
     print(example['instruction_history'])
-    instruction = RFToInstructionBuilder(
+    instruction = UdopExampleToInstruction(
                 tokenizer, image.size
             ).build(example['instruction_history'])
     print(instruction)

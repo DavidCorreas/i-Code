@@ -1,9 +1,13 @@
 # Create a flask app with a post route that recives a image and a prompt and returns a action prediction with a huggingface model
 import flask
+import io
+import base64
 import PIL.Image
 from transformers import HfArgumentParser
 from dataclasses import dataclass
+from core.datasets.robotframework import UdopExampleToInstruction
 from core.models import UdopUnimodelForConditionalGeneration, UdopTokenizer, UdopPipeline
+from src.qact.data_structure import PromptStep
 
 
 app = flask.Flask(__name__)
@@ -20,14 +24,36 @@ class FlaskConfig:
     port: int = 5000
 
 
-@app.route('/api/v1/predict', methods=['POST'])
+@app.route('/predict', methods=['POST'])
 def predict():
     # Get the image and prompt
     image = flask.request.files['image']
-    prompt = flask.request.form['prompt']
+    prompt = flask.request.form['instruction']
 
     # Parse image to pil image
     image = PIL.Image.open(image.stream).convert("RGB")
+    prediction = udop_pipeline({"image":image, "instruction":prompt})
+
+    # Return the action
+    return flask.jsonify({"action": prediction})
+
+@app.route('/predict_rf', methods=['POST'])
+def predict_rf():
+    json = flask.request.get_json()
+
+    # Parse the image from base64 to pil imag
+    image = json['image']
+    image = PIL.Image.open(io.BytesIO(base64.b64decode(image))).convert("RGB")
+    
+    # Parse the instruction history to a prompt
+    instruction_history_d: list[dict] = json['instruction_history']
+    instruction_history: list[PromptStep] = [PromptStep.from_dict(step) for step in instruction_history_d]
+    print(instruction_history)
+    
+    prompt = UdopExampleToInstruction(
+                tokenizer, image.size
+            ).build(instruction_history)
+    print(prompt)
     prediction = udop_pipeline({"image":image, "instruction":prompt})
 
     # Return the action

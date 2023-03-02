@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "qact"
+version = "0.1.0"
+description = "Example package for QACT project"
+packages = [
+    { include = "qact", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.6"

@@ -37,6 +37,9 @@ services:
       - "8081:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - net_robot
+      - default
     depends_on:
       ocr:
         condition: service_healthy
@@ -98,3 +101,9 @@ services:
 volumes:
   postgres-data:
   minio-data:
+
+networks:
+  net_robot:
+    external: true
+  default:
+    name: udop
