@@ -2,5 +2,4 @@ paddlepaddle
 paddleocr
 Flask
 pylint
-html-testRunner
 requests

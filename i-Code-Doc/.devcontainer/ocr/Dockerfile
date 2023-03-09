@@ -8,7 +8,7 @@ RUN pip3 --disable-pip-version-check --no-cache-dir install -r /tmp/pip-tmp/requ
 RUN rm -rf /tmp/pip-tmp
 
 # Copy flask_api.py and utils.py to /workspace directory
-COPY ./flask_api.py /workspace/
-COPY ./utils.py /workspace/
+COPY ./server_cpu/flask_api.py /workspace/
+COPY ./server_cpu/utils.py /workspace/
 WORKDIR /workspace
 expose 5000

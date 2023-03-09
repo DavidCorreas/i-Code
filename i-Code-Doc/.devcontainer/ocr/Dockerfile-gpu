@@ -1,0 +1,39 @@
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04 AS base
+
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install --no-install-recommends wget ffmpeg libsm6 libxext6
+
+# Will copy from existing Docker image
+COPY --from=continuumio/miniconda3:4.12.0 /opt/conda /opt/conda
+
+ENV PATH=/opt/conda/bin:$PATH
+
+# Set python 3.8 as default
+RUN set -ex && \
+    conda config --set always_yes yes --set changeps1 no && \
+    conda info -a && \
+    conda create -n ocr python=3.8 && \
+    conda clean -ya
+# Install fastdeploy
+RUN pip install fastdeploy-gpu-python==1.0.4 -f https://www.paddlepaddle.org.cn/whl/fastdeploy.html
+
+
+# SECOND stage: server PaddleOCR
+FROM base AS server
+
+WORKDIR /server
+COPY fast_deploy_gpu/server_gpu/server.py ./server.py
+
+ENTRYPOINT ["fastdeploy", "simple_serving", "--app", "server:app"]
+
+
+# THIRD stage: download PaddleOCR model
+FROM server AS with_model
+RUN wget https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar && \
+    wget https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar && \
+    wget https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_rec_infer.tar && \
+    wget https://bj.bcebos.com/paddlehub/fastdeploy/en_dict.txt && \
+    tar -xf en_PP-OCRv3_det_infer.tar && \
+    tar -xf ch_ppocr_mobile_v2.0_cls_infer.tar && \
+    tar -xf en_PP-OCRv3_rec_infer.tar && \
+    rm -rf *.tar

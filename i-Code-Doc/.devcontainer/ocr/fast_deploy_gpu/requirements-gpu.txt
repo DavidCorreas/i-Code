@@ -1,0 +1,1 @@
+fastdeploy-gpu-python --extra-index-url https://www.paddlepaddle.org.cn/whl/fastdeploy.html
