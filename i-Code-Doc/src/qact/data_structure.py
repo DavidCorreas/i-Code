@@ -33,3 +33,8 @@ class UDOPExample:
     # Create a dict to be used as a json
     def to_dict(self):
         return asdict(self)
+    
+    # Create class from dict
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)

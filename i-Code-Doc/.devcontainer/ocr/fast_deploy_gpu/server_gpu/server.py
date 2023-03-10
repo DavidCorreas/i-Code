@@ -78,3 +78,7 @@ app.register(
     task_name="fd/ppocrv3",
     model_handler=fd.serving.handler.VisionModelHandler,
     predictor=ppocr_v3)
+
+# Add health check API to FastAPI app
+app.add_api_route("/health", lambda: {"status": "ok"})
+

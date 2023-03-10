@@ -145,3 +145,6 @@ dmypy.json
 i-Code-Doc/data/
 i-Code-Doc/wandb/
 finetune_*/
+i-Code-Doc/.devcontainer/ocr/fast_deploy_gpu/server_gpu/ch_ppocr_mobile_v2.0_cls_infer/*
+i-Code-Doc/.devcontainer/ocr/fast_deploy_gpu/server_gpu/en_PP-OCRv3_det_infer/*
+i-Code-Doc/.devcontainer/ocr/fast_deploy_gpu/server_gpu/en_PP-OCRv3_rec_infer/*

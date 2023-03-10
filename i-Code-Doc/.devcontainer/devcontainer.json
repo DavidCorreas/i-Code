@@ -35,10 +35,10 @@
 				"github.copilot"
 			]
 		}
-	}
+	},
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "conda create -y -n UDOP python=3.8 && conda activate UDOP && pip install -r requirements.txt"
+	"postCreateCommand": "conda init bash"
 
 	// Configure tool-specific properties.
 	// "customizations": {},

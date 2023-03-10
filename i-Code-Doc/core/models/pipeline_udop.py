@@ -3,6 +3,9 @@ import torch
 import torchvision.transforms as T
 import requests
 import re
+import json
+import base64
+import fastdeploy as fd
 from typing import List, Optional, Tuple
 from PIL import Image
 from torchvision.transforms import functional as F
@@ -47,13 +50,20 @@ def normalText(t):
     return t.strip()
 
 def request_ocr(url: str, image: Image.Image, lang='en', format='PNG'):
-    # Transform image to send in request
+    # Transform image to base64 string
     byte_io = io.BytesIO()
     image.save(byte_io, format=format)
-    byte_io.seek(0)
+    byte_io = byte_io.getvalue()
+    img_str = base64.b64encode(byte_io).decode('utf-8')
     
-    response = requests.post(url, files={"image": byte_io}, data={"lang": "en"})
-    return response.json()["result"]
+    headers = {"Content-Type": "application/json"}
+    data = {"data": {"image": img_str}, "parameters": {}}
+    response = requests.post(url=url, headers=headers, data=json.dumps(data))
+    if response.status_code == 200:
+        r_json = json.loads(response.json()["result"])
+        return fd.vision.utils.json_to_ocr(r_json)
+    else:
+        raise Exception(f"Error in ocr request. Code: {response.status_code} Text: {response.text}")
 
 def process_ocr(url, image: Image.Image, tokenizer, lang='en') -> Optional[tuple]:
     """
@@ -72,27 +82,46 @@ def process_ocr(url, image: Image.Image, tokenizer, lang='en') -> Optional[tuple
         print(f"OCR failed for {url}: {e}")
         return None
     
-    # Normalize text and bbox
-    for res in result:
-        for line in res:
-            text = line[1][0]
-            n_text = normalText(text)
-            if text == '':
-                continue
-            sub_tokens = tokenizer.tokenize(n_text)
-
-            min_x = line[0][0][0]
-            min_y = line[0][0][1]
-            max_x = line[0][2][0]
-            max_y = line[0][2][1]
-
-            for sub_token in sub_tokens:
-                text_list.append(sub_token)
-                bbox_list.append([min_x, min_y, max_x, max_y])
+    for box, text in zip(result.boxes, result.text):
+    # box = [top_left-x, top_left-y, top_right-x, top_right-y, bottom_right-x, bottom_right-y, bottom_left-x, bottom_left-y]
+        text = normalText(text)
+        if text == '':
+            continue
+        sub_tokens = tokenizer.tokenize(text)
+        min_x = min(box[0], box[6])
+        min_y = min(box[1], box[3])
+        max_x = max(box[2], box[4])
+        max_y = max(box[5], box[7])
+        for sub_token in sub_tokens:
+            text_list.append(sub_token)
+            bbox_list.append([min_x, min_y, max_x, max_y])
 
     assert len(text_list) == len(bbox_list)
 
     return text_list, bbox_list, page_size
+            
+    
+    # Normalize text and bbox
+    # for res in result:
+    #     for line in res:
+    #         text = line[1][0]
+    #         n_text = normalText(text)
+    #         if text == '':
+    #             continue
+    #         sub_tokens = tokenizer.tokenize(n_text)
+
+    #         min_x = line[0][0][0]
+    #         min_y = line[0][0][1]
+    #         max_x = line[0][2][0]
+    #         max_y = line[0][2][1]
+
+    #         for sub_token in sub_tokens:
+    #             text_list.append(sub_token)
+    #             bbox_list.append([min_x, min_y, max_x, max_y])
+
+    # assert len(text_list) == len(bbox_list)
+
+    # return text_list, bbox_list, page_size
 
 
 class Normalize(object):
@@ -134,7 +163,7 @@ class UdopPipeline(Pipeline):
 
     def _sanitize_parameters(self, 
         image_size: int = 224, 
-        ocr_url: Optional[str] = 'http://nginx_udop:80/ocr',
+        ocr_url: Optional[str] = 'http://nginx_udop:80/fd/ppocrv3',
         max_seq_len: Optional[int] = None,
         word_boxes: Optional[Tuple[List[str], List[Tuple[int, int, int, int]]]] = None,
         lang: Optional[str] = None,
@@ -269,31 +298,46 @@ if __name__ == "__main__":
     import os
     import base64
     import PIL.Image
+    import time
     from datasets import load_dataset, DatasetDict
     from core.datasets.robotframework import UdopExampleToInstruction
     from core.models.udop_unimodel import UdopUnimodelForConditionalGeneration
     from core.models.tokenization import UdopTokenizer
+    # pip install -e .
+    from qact.data_structure import UDOPExample, PromptStep
 
     # Load model
     model = UdopUnimodelForConditionalGeneration.from_pretrained("/workspaces/udop/i-Code-Doc/finetune_robotframework")
     tokenizer = UdopTokenizer.from_pretrained("/workspaces/udop/i-Code-Doc/finetune_robotframework")
-    udop = UdopPipeline(model=model, tokenizer=tokenizer)
+    udop = UdopPipeline(model=model, tokenizer=tokenizer, device="cuda:0")
     # Load example of datset
     file_dir = os.path.dirname(os.path.abspath(__file__))
     cache_dir = os.sep.join(file_dir.split(os.sep)[:-2]) + os.sep + '.hf_cache'
     dataset = load_dataset("json", data_dir="/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop", cache_dir=cache_dir)
     assert isinstance(dataset, DatasetDict), "Please provide a dataset dict"
-    example = dataset["train"][0]
+    example_dict: dict = dataset["train"][0]
+    example: UDOPExample = UDOPExample.from_dict(example_dict)
+    # Convert example instruction history from list[dict] to list[PromptStep]
+    example.instruction_history = [PromptStep.from_dict(step) for step in example.instruction_history]
+    example.step = PromptStep.from_dict(example.step)
+    
     # Run pipeline
-    image = PIL.Image.open(io.BytesIO(base64.b64decode(example['screenshot']))).convert('RGB')
+    image = PIL.Image.open(io.BytesIO(base64.b64decode(example.screenshot))).convert('RGB')
     image.save("test.png")
-    print(example['instruction_history'])
+    print(example.instruction_history)
     instruction = UdopExampleToInstruction(
                 tokenizer, image.size
-            ).build(example['instruction_history'])
+            ).build(example.instruction_history)
     print(instruction)
+
+    # Save to debug
     with open("test.txt", "w") as f:
         f.write(instruction)
+
+    t_start = time.time()
     prediction = udop({"image":image, "instruction":instruction})
-    print(f'Label: {example["step"]["name"]} {example["step"]["args"]["bbox"]}')
+    t_end = time.time()
+
+    print(f'Label: {example.step.name} {example.step.args["bbox"]}')
     print(f'Prediction {prediction}')
+    print(f'Time: {t_end - t_start}')
