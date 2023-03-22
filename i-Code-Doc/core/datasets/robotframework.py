@@ -5,6 +5,8 @@ import datasets
 import requests
 import torchvision.transforms as T
 import PIL.Image
+import json
+import fastdeploy as fd
 import PIL.ImageDraw
 import PIL.ImageFont
 import torch
@@ -12,12 +14,10 @@ from collections import namedtuple
 from torchvision.transforms import functional as F
 from typing import Optional, Union
 from datasets import load_dataset  # type: ignore
-from PIL.Image import Image
-from io import BytesIO
 import sys
 sys.path.append('/workspaces/udop/i-Code-Doc')
 from core.models import UdopTokenizer
-from src.qact.data_structure import UDOPExample, PromptStep
+from src.qact.data_structure import PromptStep
 
 
 def get_visual_bbox(image_size=224):
@@ -56,16 +56,23 @@ def normalText(t):
     t = str(t)
     return t.strip()
 
-def request_ocr(url: str, image: Image, lang='en', format='PNG'):
-    # Transform image to send in request
-    byte_io = BytesIO()
+def request_ocr(url: str, image: PIL.Image.Image, lang='en', format='PNG'):
+    # Transform image to base64 string
+    byte_io = io.BytesIO()
     image.save(byte_io, format=format)
-    byte_io.seek(0)
+    byte_io = byte_io.getvalue()
+    img_str = base64.b64encode(byte_io).decode('utf-8')
     
-    response = requests.post(url, files={"image": byte_io}, data={"lang": "en"})
-    return response.json()["result"]
+    headers = {"Content-Type": "application/json"}
+    data = {"data": {"image": img_str}, "parameters": {}}
+    response = requests.post(url=url, headers=headers, data=json.dumps(data))
+    if response.status_code == 200:
+        r_json = json.loads(response.json()["result"])
+        return fd.vision.utils.json_to_ocr(r_json)
+    else:
+        raise Exception(f"Error in ocr request. Code: {response.status_code} Text: {response.text}")
 
-def process_ocr(url, image: Image, tokenizer, lang='en') -> Optional[tuple]:
+def process_ocr(url, image: PIL.Image.Image, tokenizer, lang='en') -> Optional[tuple]:
     """
     Process TiffImageFile with OCR, tokenize the text and for every token create a bounding box.
     :param image: Image. Image to process.
@@ -82,23 +89,19 @@ def process_ocr(url, image: Image, tokenizer, lang='en') -> Optional[tuple]:
         print(f"OCR failed for {url}: {e}")
         return None
     
-    # Normalize text and bbox
-    for res in result:
-        for line in res:
-            text = line[1][0]
-            n_text = normalText(text)
-            if text == '':
-                continue
-            sub_tokens = tokenizer.tokenize(n_text)
-
-            min_x = line[0][0][0]
-            min_y = line[0][0][1]
-            max_x = line[0][2][0]
-            max_y = line[0][2][1]
-
-            for sub_token in sub_tokens:
-                text_list.append(sub_token)
-                bbox_list.append([min_x, min_y, max_x, max_y])
+    for box, text in zip(result.boxes, result.text):
+    # box = [top_left-x, top_left-y, top_right-x, top_right-y, bottom_right-x, bottom_right-y, bottom_left-x, bottom_left-y]
+        text = normalText(text)
+        if text == '':
+            continue
+        sub_tokens = tokenizer.tokenize(text)
+        min_x = min(box[0], box[6])
+        min_y = min(box[1], box[3])
+        max_x = max(box[2], box[4])
+        max_y = max(box[5], box[7])
+        for sub_token in sub_tokens:
+            text_list.append(sub_token)
+            bbox_list.append([min_x, min_y, max_x, max_y])
 
     assert len(text_list) == len(bbox_list)
 
@@ -172,7 +175,7 @@ class HfRobotframeworkDatasetBuilder:
         file_dir = "/workspaces/udop/i-Code-Doc/core/datasets"
         cache_dir = os.sep.join(file_dir.split(os.sep)[:-2]) + os.sep + '.hf_cache'
         
-        self.ocr_url = "http://nginx:80/ocr"
+        self.ocr_url = "http://nginx_udop:80/fd/ppocrv3"
         self.tokenizer: UdopTokenizer = tokenizer
         self.max_seq_length = data_args.max_seq_length
         self.image_size = data_args.image_size
@@ -181,11 +184,7 @@ class HfRobotframeworkDatasetBuilder:
         
         # Load dataset
         dataset: datasets.DatasetDict = load_dataset("json", data_dir=dataset_dir, cache_dir=cache_dir) # type: ignore
-        # TODO: Remove this line
-        dataset: datasets.DatasetDict = datasets.DatasetDict({key: dataset[key].select(range(10)) for key in dataset.keys()})
         assert isinstance(dataset, datasets.DatasetDict)
-
-        
 
         # Clean dataset before splitting
         filter_not = lambda example: all([instruction['name'].lower() != 'not' for instruction in example['instruction_history']])
@@ -193,18 +192,18 @@ class HfRobotframeworkDatasetBuilder:
         dataset = dataset.filter(filter_not)
         
         # Split dataset
-        train_dataset = dataset['train'].train_test_split(test_size=0.1, seed=42)
-        val_dataset = train_dataset['train'].train_test_split(test_size=0.1, seed=42)
+        train_dataset = dataset['train'].train_test_split(test_size=0.2, seed=42)
+        # val_dataset = train_dataset['train'].train_test_split(test_size=0.1, seed=42)
         self.dataset = datasets.DatasetDict({
-            'train': val_dataset['train'],
-            'validation': val_dataset['test'],
-            'test': train_dataset['test']
+            'train': train_dataset['train'],
+            'validation': train_dataset['test'],
+            # 'test': train_dataset['test']
         })
         
         # Print size of dataset
         print(f"Train size: {len(self.dataset['train'])}")
         print(f"Validation size: {len(self.dataset['validation'])}")
-        print(f"Test size: {len(self.dataset['test'])}")
+        # print(f"Test size: {len(self.dataset['test'])}")
 
     def build_dataset(self):
         print("Building dataset")
@@ -376,8 +375,7 @@ if __name__ == '__main__':
     )
 
     DataArgs = namedtuple('DataArgs', ['dataset_dir', 'max_samples', 'max_seq_length', 'image_size'])
-    dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop"
+    dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop/Gym_Crawl"
     data_args = DataArgs(dataset_dir=dataset_dir, max_samples=-1, max_seq_length=512, image_size=224)
-
-    new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=1).build_dataset()
-    new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/robotframework")
+    new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=10).build_dataset()
+    new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/robotframework_gym")
