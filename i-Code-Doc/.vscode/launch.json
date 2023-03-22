@@ -119,9 +119,20 @@
             "justMyCode": false,
             "env": {
                 "PYTHONPATH": "/workspaces/udop/i-Code-Doc",
-                "CUDA_VISIBLE_DEVICES": "0"
+                "CUDA_VISIBLE_DEVICES": "1"
             },
-            "args": ["/workspaces/udop/i-Code-Doc/run_robotframework_debug.json"]
+            "args": ["/workspaces/udop/i-Code-Doc/scripts/run_robotframework_debug.json"]
+        },
+        {
+            "name": "Debug Api server",
+            "type": "python",
+            "request": "launch",
+            "program": "/workspaces/udop/i-Code-Doc/api/app.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "/workspaces/udop/i-Code-Doc"
+            }
         }
     ]
 }

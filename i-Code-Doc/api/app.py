@@ -3,6 +3,7 @@ import flask
 import io
 import base64
 import PIL.Image
+import time
 from transformers import HfArgumentParser
 from dataclasses import dataclass
 from core.datasets.robotframework import UdopExampleToInstruction
@@ -11,12 +12,12 @@ from src.qact.data_structure import PromptStep
 
 
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True
+# app.config["DEBUG"] = True
 
 
 @dataclass
 class ModelConfig:
-    model_name_or_path: str = "/workspaces/udop/i-Code-Doc/finetune_robotframework/checkpoint-1500"
+    model_name_or_path: str = "/workspaces/udop/i-Code-Doc/finetune_robotframework"
 
 @dataclass
 class FlaskConfig:
@@ -50,11 +51,20 @@ def predict_rf():
     instruction_history: list[PromptStep] = [PromptStep.from_dict(step) for step in instruction_history_d]
     print(instruction_history)
     
+    t_init = time.time()
     prompt = UdopExampleToInstruction(
                 tokenizer, image.size
             ).build(instruction_history)
+    elapsed_time = time.time() - t_init
+    print(f"Time to build prompt: {elapsed_time}")
+    
     print(prompt)
+    # Get time that takes to predict
+    t_init = time.time()
     prediction = udop_pipeline({"image":image, "instruction":prompt})
+    elapsed_time = time.time() - t_init
+    print(f'Prediction: {prediction}')
+    print(f"Time to predict: {elapsed_time}")
 
     # Return the action
     return flask.jsonify({"action": prediction})
@@ -69,7 +79,7 @@ if __name__ == "__main__":
     model = UdopUnimodelForConditionalGeneration.from_pretrained(model_config.model_name_or_path)
     tokenizer = UdopTokenizer.from_pretrained(model_config.model_name_or_path)
     global udop_pipeline
-    udop_pipeline = UdopPipeline(model=model, tokenizer=tokenizer)
+    udop_pipeline = UdopPipeline(model=model, tokenizer=tokenizer, device=1)
 
     # Run the app
     app.run(host=flask_config.host, port=flask_config.port)
