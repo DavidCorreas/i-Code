@@ -20,6 +20,14 @@ class CustomTrainingArguments(TrainingArguments):
             'If set to 0, no samples will be logged.'
         }
     )
+    samples_to_log_per_eval: int = field(
+        default=6,
+        metadata={
+            'help':
+            'The number of samples to log per epoch for training examples, and per evaluation for evalutaion examples.'
+            'If set to 0, no samples will be logged.'
+        }
+    )
     only_grounding_samples: bool = field(
         default=True,
         metadata={

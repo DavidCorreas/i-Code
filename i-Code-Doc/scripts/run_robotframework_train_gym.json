@@ -1,6 +1,5 @@
 {
     "dataset_name": "/workspaces/udop/i-Code-Doc/data/robotframework_gym",
-    "data_dir": "./rvl-cdip",
     "max_seq_length": 1024,
     "image_size": 224,
     "max_seq_length_decoder": 100,
@@ -8,9 +7,9 @@
     "do_train": true,
     "do_eval": true,
     "do_predict": false,
-    "model_name_or_path": "finetune_robotframework",
+    "model_name_or_path": "/workspaces/udop/i-Code-Doc/model/hf",
     "model_type": "UdopUnimodel",
-    "output_dir": "./finetune_robotframework_debug",
+    "output_dir": "./finetune_robotframework",
     "gradient_accumulation_steps": 8,
     "dataloader_num_workers": 1,
     "overwrite_output_dir": true,
@@ -21,9 +20,9 @@
     "weight_decay": 0.001,
     
     "report_to": "wandb",
-    "max_steps": 1,
-    "save_steps": 200,
-    "logging_steps": 1,
+    "max_steps": 4000,
+    "save_steps": 1000,
+    "logging_steps": 10,
     "evaluation_strategy": "steps",
-    "eval_steps": 1
+    "eval_steps": 200
 }

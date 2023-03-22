@@ -25,7 +25,10 @@ class UdopWandbCallback(WandbCallback):
         # Select num_examples from dataloader randomly
         if args.only_grounding_samples:
             # Get a subset of the dataset to reduce the filtering time
-            examples = dataloader.dataset.shuffle().select(range(num_examples * 20))  # type: ignore
+            if num_examples > 100:
+                examples = dataloader.dataset.shuffle().select(range(num_examples * 20))  # type: ignore
+            else:
+                examples = dataloader.dataset  # type: ignore
             # Filter out examples that don't have any grounding
             loc_inx_start = tokenizer.vocab_size - tokenizer._loc_extra_ids - tokenizer._other_extra_ids
             loc_inx_end = tokenizer.vocab_size - tokenizer._other_extra_ids
@@ -142,7 +145,7 @@ class UdopWandbCallback(WandbCallback):
         if state.is_world_process_zero:
             epoch = f'{state.epoch}(eval)' if state.epoch is not None else f'{-1}(eval)'
             rows = self._create_rows(
-                num_examples=args.samples_to_log_per_epoch,
+                num_examples=args.samples_to_log_per_eval,
                 epoch=epoch,
                 dataloader=kwargs["eval_dataloader"],
                 model=kwargs["model"],
