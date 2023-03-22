@@ -133,21 +133,27 @@ class UdopTokenizer(T5Tokenizer):
         """
         bbox = np.ones((logits.shape[0], 4), dtype=np.int32)
         # Get rows of logits that contain bbox
-        loc_inx_start = self.vocab_size - self._loc_extra_ids - self._other_extra_ids
-        loc_inx_end = self.vocab_size - self._other_extra_ids
-        loc_inx = np.where(np.logical_and(logits >= loc_inx_start, logits < loc_inx_end))
+        loc_idx_start = self.vocab_size - self._loc_extra_ids - self._other_extra_ids
+        loc_idx_end = self.vocab_size - self._other_extra_ids
+        # loc_idx: tuple -> (positions of rows, positions of columns) where is a loc token
+        loc_idx = np.where(np.logical_and(logits >= loc_idx_start, logits < loc_idx_end))
 
-        # Get unique rows
-        rows_bbox = np.unique(loc_inx[0])
+        # Get unique rows. position of rows (loc_idx[0]) is like [0, 0, 0, 0, 4, 4, 4, 4, 10, 10, 10, 10]
+        # Transform to [0, 4, 10]
+        rows_bbox = np.unique(loc_idx[0])
 
         for i in range(logits.shape[0]):
             if i in rows_bbox:
-                # Get index where loc_inx[0] == i
-                inx = np.where(loc_inx[0] == i)
+                # Get index where loc_idx[0] == i. For example if i = 4, idx = [4, 5, 6, 7]
+                idx = np.where(loc_idx[0] == i)
+                # Check if there are 4 loc tokens
+                if len(idx[0]) != 4:
+                    bbox[i, :] = [1, 1, 1, 1]  # Later, we will multiply by -1 to get [-1, -1, -1, -1]
+                    continue
                 # Get logits of bbox
-                logits_bbox = logits[i, loc_inx[1][inx]]
+                logits_bbox = logits[i, loc_idx[1][idx]]
                 # Get bbox
-                bbox[i, :] = logits_bbox - loc_inx_end + 1
+                bbox[i, :] = logits_bbox - loc_idx_end + 1
 
         bbox = bbox * -1
         return bbox
