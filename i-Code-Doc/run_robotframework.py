@@ -285,8 +285,9 @@ def main():
     eval_dataset = dataset['validation']
     if training_args.do_eval:
         assert eval_dataset is not None, "Evaluation requires an evaluation dataset"
-    test_dataset = dataset['test']
+    test_dataset = None
     if training_args.do_predict:
+        test_dataset = dataset['test']
         assert test_dataset is not None, "Prediction requires a test dataset"               
 
     # Data collator
@@ -316,13 +317,7 @@ def main():
         # decode preds and labels
         assert tokenizer.pad_token_id is not None, "Please make sure that `tokenizer.pad_token_id` is defined."
         labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
-        decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-
-        # rougeLSum expects newline after each sentence
-        decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
-        decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
-        result = rouge_metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+        result = dict()
 
         # iou metric
         if isinstance(tokenizer, UdopTokenizer):
