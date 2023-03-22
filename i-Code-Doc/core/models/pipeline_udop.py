@@ -247,10 +247,11 @@ class UdopPipeline(Pipeline):
         instruction = inputs['instruction']
         prompt = prompt_text + " " + instruction
         # Encoder
-        prompt_ids =  self.tokenizer.encode(prompt, add_special_tokens=False)
+        prompt_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
         input_ids = prompt_ids + token_list
         input_ids = input_ids[:max_seq_len]
         bbox_list = [[0,0,0,0]] * len(prompt_ids) + bbox_list
+        bbox_list = bbox_list[:max_seq_len]
         attention_mask = [1] * len(input_ids)
         char_ids = [0]
         char_seg_data = [[0,0,0,0]]
