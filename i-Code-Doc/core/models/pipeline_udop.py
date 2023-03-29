@@ -231,7 +231,7 @@ class UdopPipeline(Pipeline):
         norm_bbox_list = []
         width, height = self.page_size
         for bbox in bbox_list:
-            norm_bbox = [bbox[0] / width, bbox[1] / height, bbox[2] / width, bbox[3] / height]
+            norm_bbox = [float(bbox[0] / width), float(bbox[1] / height), float(bbox[2] / width), float(bbox[3] / height)]
             norm_bbox_list.append(norm_bbox)
         bbox_list = norm_bbox_list
         
