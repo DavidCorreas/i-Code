@@ -180,10 +180,15 @@ class HfRobotframeworkDatasetBuilder:
         self.max_seq_length = data_args.max_seq_length
         self.image_size = data_args.image_size
         dataset_dir = data_args.dataset_dir
+        dataset_valid_dir = data_args.dataset_valid_dir
+        validation_split = data_args.validation_split
         self.num_proc = num_proc
         
         # Load dataset
         dataset: datasets.DatasetDict = load_dataset("json", data_dir=dataset_dir, cache_dir=cache_dir) # type: ignore
+        dataset_valid = None
+        if dataset_valid_dir:
+            dataset_valid: Optional[datasets.DatasetDict] = load_dataset("json", data_dir=dataset_valid_dir, cache_dir=cache_dir)  # type: ignore
         assert isinstance(dataset, datasets.DatasetDict)
 
         # Clean dataset before splitting
@@ -192,14 +197,26 @@ class HfRobotframeworkDatasetBuilder:
         dataset = dataset.filter(filter_not)
         
         # Split dataset
-        train_dataset = dataset['train'].train_test_split(test_size=0.2, seed=42)
-        # val_dataset = train_dataset['train'].train_test_split(test_size=0.1, seed=42)
-        self.dataset = datasets.DatasetDict({
-            'train': train_dataset['train'],
-            'validation': train_dataset['test'],
-            # 'test': train_dataset['test']
-        })
+        if validation_split > 0:
+            assert validation_split < 1, "Validation split must be between 0 and 1"
+            train_dataset = dataset['train'].train_test_split(test_size=0.1, seed=42)
+            # val_dataset = train_dataset['train'].train_test_split(test_size=0.1, seed=42)
+            self.dataset = datasets.DatasetDict({
+                'train': train_dataset['train'],
+                'validation': train_dataset['test'],
+                # 'test': train_dataset['test']
+            })
+        else:
+            self.dataset = datasets.DatasetDict({
+                'train': dataset['train'],
+                'validation': dataset['train']
+                # 'test': train_dataset['test']
+            })
         
+        # Override validation dataset if provided
+        if dataset_valid:
+            self.dataset['validation'] = dataset_valid['train']
+
         # Print size of dataset
         print(f"Train size: {len(self.dataset['train'])}")
         print(f"Validation size: {len(self.dataset['validation'])}")
@@ -296,15 +313,21 @@ class HfRobotframeworkDatasetBuilder:
             instruction = UdopExampleToInstruction(
                 self.tokenizer, example['page_size']
             ).build(list_steps)
-            gt_step = PromptStep.from_dict(example['step'])
+            # Change from step to action. This line is for support legacy code
+            key_action = 'action' if 'action' in example else 'step'
+            gt_step = PromptStep.from_dict(example[key_action])
             label = UdopExampleToInstruction(
                 self.tokenizer, example['page_size']
             ).action_to_string(gt_step)
-            label = example['step']['type'] + ": " + label
+            label = example[key_action]['type'] + ": " + label
+
             return {
                 "prompt": prompt_text,
                 "instruction": instruction,
                 "label": label,
+                # This line is for support legacy code. Add the action type to remove in the future
+                "action": "",
+                "step": ""
             }
         dataset = dataset.map(make_prompt)
 
@@ -374,8 +397,11 @@ if __name__ == '__main__':
         use_fast=True
     )
 
-    DataArgs = namedtuple('DataArgs', ['dataset_dir', 'max_samples', 'max_seq_length', 'image_size'])
-    dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/Web/frontend/data/to_udop/Gym_Crawl"
-    data_args = DataArgs(dataset_dir=dataset_dir, max_samples=-1, max_seq_length=512, image_size=224)
+    DataArgs = namedtuple('DataArgs', ['dataset_dir', 'max_samples', 'max_seq_length', 'image_size', 'validation_split', 'dataset_valid_dir'])
+    dataset_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/robotframework-butlerhat/TestSuites/CicloZero/data/to_udop"
+    # Valid dataset is to train with all samples to train (validation_split=0) and then use the valid dataset random to evaluate
+    # valid_dir = ""  # Uncomment to not use valid dataset
+    valid_dir = "/workspaces/udop/i-Code-Doc/IA4RobotFramework/robotframework-butlerhat/TestSuites/CicloZero/data/validation"
+    data_args = DataArgs(dataset_dir=dataset_dir, max_samples=-1, max_seq_length=512, image_size=224, validation_split=0, dataset_valid_dir=valid_dir)
     new_dataset = HfRobotframeworkDatasetBuilder(data_args, tokenizer, num_proc=10).build_dataset()
-    new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/data/robotframework_gym")
+    new_dataset.save_to_disk("/workspaces/udop/i-Code-Doc/IA4RobotFramework/robotframework-butlerhat/TestSuites/CicloZero/ai_finetuned/dataset")
