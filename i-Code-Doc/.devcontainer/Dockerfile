@@ -4,12 +4,16 @@ ARG UNAME=vscode
 ARG USER_ID=1004
 ARG GROUP_ID=1004
 
+USER root
 RUN groupmod -g $GROUP_ID $UNAME
 RUN usermod -u $USER_ID -g $GROUP_ID $UNAME
 
 # [Optional] Uncomment this section to install additional OS packages.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends poppler-utils ffmpeg libsm6 libxext6
+
+RUN mkdir -p /tmp/pip-tmp && chown -R $USER_ID:$GROUP_ID /tmp/pip-tmp
+RUN mkdir -p /tmp/conda-tmp && chown -R $USER_ID:$GROUP_ID /tmp/conda-tmp
 
 # Copy environment.yml (if found) to a temp location so we update the environment. Also
 # copy "noop.txt" so the COPY instruction does not fail if no environment.yml exists.
@@ -26,3 +30,5 @@ RUN rm -rf /tmp/pip-tmp
 
 ENV HF_HOME="/workspaces/udop/i-Code-Doc/.hf_cache"
 ENV HF_DATASETS_CACHE="/workspaces/udop/i-Code-Doc/.hf_cache"
+
+USER $USER_ID

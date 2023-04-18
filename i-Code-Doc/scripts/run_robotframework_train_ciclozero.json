@@ -21,10 +21,10 @@
     
     "report_to": "wandb",
     "max_steps": 100,
-    "save_steps": 100,
+    "save_steps": 110,
     "logging_steps": 2,
     "evaluation_strategy": "steps",
-    "eval_steps": 20,
+    "eval_steps": 110,
     "samples_to_log_per_eval": 4,
     "samples_to_log_per_epoch": 4
 }

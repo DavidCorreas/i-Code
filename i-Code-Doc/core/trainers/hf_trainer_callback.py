@@ -97,9 +97,15 @@ class UdopWandbCallback(WandbCallback):
             prediction = example['wandb_prediction'] if 'wandb_prediction' in example else ''
             num_loc = len(re.findall(r'<loc_', prediction))
             if num_loc == 4:
-                bbox = tokenizer.convert_sentence_to_bbox(prediction, page_size)
-                draw.rectangle(bbox, outline="green", width=5)
+                bbox = tokenizer.convert_sentence_to_bbox(prediction, page_size)  # bbox = [x0, y0, x1, y1]
+                # Check if y1 is greater than y0 and x1 is greater than x0
+                if bbox[3] > bbox[1] and bbox[2] > bbox[0]:
+                    draw.rectangle(bbox, outline="green", width=5)
+                else:
+                    # Draw message at the top
+                    draw.text((0, 0), "Prediction is not valid", fill="green")
             
+            del draw
             return {'wandb_image': res_img}  # Convert to wandb.Image later. Arrow can't serialize wandb.Image
         examples = examples.map(get_image)
 

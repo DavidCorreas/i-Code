@@ -16,3 +16,4 @@ nltk
 wandb
 flask
 fastdeploy-python
+rouge_score
